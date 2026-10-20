@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, Union
 
 __all__ = (
     "Enum",
+    "DisplayNameFont",
+    "DisplayNameEffect",
     "ChannelType",
     "MessageType",
     "VoiceRegion",
@@ -1209,6 +1211,46 @@ class InviteTargetUsersJobStatusCode(Enum):
     processing = 1
     completed = 2
     failed = 3
+
+
+class DisplayNameFont(Enum):
+    """The font used for a display name.
+
+    .. versionadded:: 2.8
+    """
+
+    default = 11
+    bangers = 1
+    bio_rhyme = 2
+    cherry_bomb = 3
+    chicle = 4
+    compagnon = 5
+    museo_moderno = 6
+    neo_castel = 7
+    pixelify = 8
+    ribes = 9
+    sinistre = 10
+    zilla_slab = 12
+    playpen_sans = 13
+    orbitron = 14
+    new_rocker = 15
+    kalam = 16
+
+
+class DisplayNameEffect(Enum):
+    """The effect used for a display name.
+
+    .. versionadded:: 2.8
+    """
+
+    solid = 1
+    gradient = 2
+    neon = 3
+    toon = 4
+    pop = 5
+    glow = 6
+    prism = 7
+    gummy = 8
 
 
 T = TypeVar("T")

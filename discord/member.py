@@ -39,6 +39,7 @@ from .activity import ActivityTypes, create_activity
 from .asset import Asset
 from .collectibles import Collectibles
 from .colour import Colour
+from .display_name_style import DisplayNameStyle, _display_name_style_payload
 from .enums import Status, try_enum
 from .errors import InvalidArgument
 from .flags import MemberFlags
@@ -308,6 +309,7 @@ class Member(discord.abc.Messageable, _UserTag):
         "_state",
         "_avatar",
         "_banner",
+        "_guild_display_name_style",
         "communication_disabled_until",
         "flags",
         "_avatar_decoration",
@@ -353,6 +355,10 @@ class Member(discord.abc.Messageable, _UserTag):
         self.pending: bool = data.get("pending", False)
         self._avatar: str | None = data.get("avatar")
         self._banner: str | None = data.get("banner")
+        style = data.get("display_name_styles")
+        self._guild_display_name_style = (
+            DisplayNameStyle._from_data(style) if style is not None else None
+        )
         self.communication_disabled_until: datetime.datetime | None = utils.parse_time(
             data.get("communication_disabled_until")
         )
@@ -402,6 +408,11 @@ class Member(discord.abc.Messageable, _UserTag):
         self._roles = utils.SnowflakeList(map(int, data["roles"]))
         self.nick = data.get("nick", None)
         self.pending = data.get("pending", False)
+        if "display_name_styles" in data:
+            style = data["display_name_styles"]
+            self._guild_display_name_style = (
+                DisplayNameStyle._from_data(style) if style is not None else None
+            )
 
     @classmethod
     def _try_upgrade(
@@ -435,6 +446,7 @@ class Member(discord.abc.Messageable, _UserTag):
         self._state = member._state
         self._avatar = member._avatar
         self._banner = member._banner
+        self._guild_display_name_style = member._guild_display_name_style
         self.communication_disabled_until = member.communication_disabled_until
         self.flags = member.flags
         self._avatar_decoration = member._avatar_decoration
@@ -465,6 +477,11 @@ class Member(discord.abc.Messageable, _UserTag):
         self._roles = utils.SnowflakeList(map(int, data["roles"]))  # type: ignore # the API is the same
         self._avatar = data.get("avatar")
         self._banner = data.get("banner")
+        if "display_name_styles" in data:
+            style = data["display_name_styles"]
+            self._guild_display_name_style = (
+                DisplayNameStyle._from_data(style) if style is not None else None
+            )
         self.communication_disabled_until = utils.parse_time(
             data.get("communication_disabled_until")
         )
@@ -496,6 +513,7 @@ class Member(discord.abc.Messageable, _UserTag):
             u.primary_guild,
             u._collectibles,
             u._avatar_decoration,
+            u._display_name_style,
         )
         # These keys seem to always be available
         if (
@@ -506,6 +524,12 @@ class Member(discord.abc.Messageable, _UserTag):
             )
         else:
             new_primary_guild = None
+        new_display_name_style = u._display_name_style
+        if "display_name_styles" in user:
+            style = user["display_name_styles"]
+            new_display_name_style = (
+                DisplayNameStyle._from_data(style) if style is not None else None
+            )
         modified = (
             user["username"],
             user["avatar"],
@@ -515,6 +539,7 @@ class Member(discord.abc.Messageable, _UserTag):
             new_primary_guild,
             user.get("collectibles") or u._collectibles,
             user.get("avatar_decoration_data"),
+            new_display_name_style,
         )
         if original != modified:
             to_return = User._copy(self._user)
@@ -527,9 +552,28 @@ class Member(discord.abc.Messageable, _UserTag):
                 u.primary_guild,
                 u._collectibles,
                 u._avatar_decoration,
+                u._display_name_style,
             ) = modified
             # Signal to dispatch on_user_update
             return to_return, u
+
+    @property
+    def guild_display_name_style(self) -> DisplayNameStyle | None:
+        """Optional[:class:`DisplayNameStyle`]: The member's server-specific style.
+
+        Returns ``None`` when no server override is set.
+
+        .. versionadded:: 2.8
+        """
+        return self._guild_display_name_style
+
+    @property
+    def display_name_style(self) -> DisplayNameStyle | None:
+        """Optional[:class:`DisplayNameStyle`]: The server style, falling back to the global style.
+
+        .. versionadded:: 2.8
+        """
+        return self.guild_display_name_style or self._user.display_name_style
 
     @property
     def status(self) -> Status:
@@ -877,6 +921,7 @@ class Member(discord.abc.Messageable, _UserTag):
         banner: bytes | None = MISSING,
         avatar: bytes | None = MISSING,
         bio: str | None = MISSING,
+        display_name_style: DisplayNameStyle | None = MISSING,
     ) -> Member | None:
         """|coro|
 
@@ -919,6 +964,7 @@ class Member(discord.abc.Messageable, _UserTag):
             - ``avatar``
             - ``banner``
             - ``bio``
+            - ``display_name_style``
 
         All parameters are optional.
 
@@ -978,6 +1024,12 @@ class Member(discord.abc.Messageable, _UserTag):
 
             .. versionadded:: 2.7
 
+        display_name_style: Optional[:class:`DisplayNameStyle`]
+            The bot's display name style in this guild. Pass ``None`` to clear
+            the override and inherit the global style. Only editable for the bot.
+
+            .. versionadded:: 2.8
+
         Returns
         -------
         Optional[:class:`.Member`]
@@ -991,7 +1043,7 @@ class Member(discord.abc.Messageable, _UserTag):
         HTTPException
             The operation failed.
         InvalidArgument
-            You tried to edit the avatar, banner, or bio of a member that is not the bot.
+            You tried to edit the avatar, banner, bio, or display name style of a member that is not the bot.
         """
         http = self._state.http
         guild_id = self.guild.id
@@ -1065,16 +1117,19 @@ class Member(discord.abc.Messageable, _UserTag):
         if bio is not MISSING:
             bot_payload["bio"] = bio or ""
 
+        if display_name_style is not MISSING:
+            bot_payload.update(_display_name_style_payload(display_name_style))
+
         if bot_payload and not me:
             raise InvalidArgument(
-                "Can only edit avatar, banner, or bio for the bot's member."
+                "Can only edit avatar, banner, bio, or display name style for the bot's member."
             )
 
         if payload:
             data = await http.edit_member(guild_id, self.id, reason=reason, **payload)
-        elif bot_payload:
+        if bot_payload:
             data = await http.edit_member(guild_id, "@me", reason=reason, **bot_payload)
-        else:
+        if not payload and not bot_payload:
             return None
 
         return Member(data=data, guild=self.guild, state=self._state)

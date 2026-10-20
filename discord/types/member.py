@@ -28,6 +28,7 @@ from typing import TypedDict
 from typing_extensions import NotRequired
 
 from .collectibles import AvatarDecoration, Collectibles
+from .display_name_style import DisplayNameStyle
 from .snowflake import Snowflake, SnowflakeList
 from .user import User
 
@@ -54,6 +55,7 @@ class Member(PartialMember, total=False):
     communication_disabled_until: str
     flags: int
     collectibles: Collectibles
+    display_name_styles: DisplayNameStyle | None
     avatar_decoration_data: AvatarDecoration
 
 
@@ -63,6 +65,7 @@ class _OptionalMemberWithUser(PartialMember, total=False):
     premium_since: str
     pending: bool
     permissions: str
+    display_name_styles: DisplayNameStyle | None
     avatar_decoration_data: AvatarDecoration
 
 
@@ -89,4 +92,5 @@ class MemberUpdateEvent(TypedDict):
     communication_disabled_until: NotRequired[str | None]
     flags: NotRequired[int | None]
     avatar_decoration_data: NotRequired[AvatarDecoration | None]
+    display_name_styles: NotRequired[DisplayNameStyle | None]
     # collectibles: Collectibles

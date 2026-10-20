@@ -27,11 +27,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from typing_extensions import Self
+
 import discord.abc
 
 from .asset import Asset
 from .collectibles import Collectibles, Nameplate
 from .colour import Colour
+from .display_name_style import DisplayNameStyle, _display_name_style_payload
 from .flags import PublicUserFlags
 from .iterators import EntitlementIterator
 from .monetization import Entitlement
@@ -51,8 +54,8 @@ if TYPE_CHECKING:
     from .types.user import User as UserPayload
 
 __all__ = (
-    "User",
     "ClientUser",
+    "User",
 )
 
 BU = TypeVar("BU", bound="BaseUser")
@@ -65,20 +68,21 @@ class _UserTag:
 
 class BaseUser(_UserTag):
     __slots__ = (
-        "name",
-        "id",
+        "_accent_colour",
+        "_avatar",
+        "_avatar_decoration",
+        "_banner",
+        "_collectibles",
+        "_display_name_style",
+        "_public_flags",
+        "_state",
+        "bot",
         "discriminator",
         "global_name",
-        "_avatar",
-        "_banner",
-        "_accent_colour",
-        "bot",
-        "system",
-        "_public_flags",
-        "_avatar_decoration",
-        "_state",
+        "id",
+        "name",
         "primary_guild",
-        "_collectibles",
+        "system",
     )
 
     if TYPE_CHECKING:
@@ -134,7 +138,7 @@ class BaseUser(_UserTag):
             )
         )
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, _UserTag) and other.id == self.id
 
     def __hash__(self) -> int:
@@ -150,6 +154,13 @@ class BaseUser(_UserTag):
         self._accent_colour = data.get("accent_color", None)
         self._avatar_decoration = data.get("avatar_decoration_data", None)
         self._collectibles = data.get("collectibles")
+        if "display_name_styles" in data:
+            style = data["display_name_styles"]
+            self._display_name_style = (
+                DisplayNameStyle._from_data(style) if style is not None else None
+            )
+        elif not hasattr(self, "_display_name_style"):
+            self._display_name_style = None
         primary_guild_payload = data.get("primary_guild", None)
         if primary_guild_payload and primary_guild_payload.get("identity_enabled"):
             self.primary_guild = PrimaryGuild(
@@ -162,7 +173,7 @@ class BaseUser(_UserTag):
         self.system = data.get("system", False)
 
     @classmethod
-    def _copy(cls: type[BU], user: BU) -> BU:
+    def _copy(cls, user: Self) -> Self:
         self = cls.__new__(cls)  # bypass __init__
 
         self.name = user.name
@@ -178,6 +189,7 @@ class BaseUser(_UserTag):
         self._public_flags = user._public_flags
         self.primary_guild = user.primary_guild
         self._collectibles = user._collectibles
+        self._display_name_style = user._display_name_style
         self.system = user.system
 
         return self
@@ -190,7 +202,20 @@ class BaseUser(_UserTag):
             "discriminator": self.discriminator,
             "global_name": self.global_name,
             "bot": self.bot,
+            "display_name_styles": (
+                self._display_name_style.to_dict()
+                if self._display_name_style is not None
+                else None
+            ),
         }
+
+    @property
+    def display_name_style(self) -> DisplayNameStyle | None:
+        """The user's global display name style.
+
+        .. versionadded:: 2.8
+        """
+        return self._display_name_style
 
     @property
     def collectibles(self) -> Collectibles | None:
@@ -427,7 +452,7 @@ class ClientUser(BaseUser):
         Specifies if the user has MFA turned on and working.
     """
 
-    __slots__ = ("locale", "_flags", "verified", "mfa_enabled", "__weakref__")
+    __slots__ = ("__weakref__", "_flags", "locale", "mfa_enabled", "verified")
 
     if TYPE_CHECKING:
         verified: bool
@@ -472,6 +497,7 @@ class ClientUser(BaseUser):
         username: str = MISSING,
         avatar: bytes = MISSING,
         banner: bytes = MISSING,
+        display_name_style: DisplayNameStyle | None = MISSING,
     ) -> ClientUser:
         """|coro|
 
@@ -503,6 +529,11 @@ class ClientUser(BaseUser):
             A :term:`py:bytes-like object` representing the image to upload.
             Could be ``None`` to denote no banner.
 
+        display_name_style: Optional[:class:`DisplayNameStyle`]
+            The global display name style. Pass ``None`` to clear it.
+
+            .. versionadded:: 2.8
+
         Returns
         -------
         :class:`ClientUser`
@@ -528,6 +559,9 @@ class ClientUser(BaseUser):
             payload["banner"] = None
         elif banner is not MISSING:
             payload["banner"] = _bytes_to_base64_data(banner)
+
+        if display_name_style is not MISSING:
+            payload.update(_display_name_style_payload(display_name_style))
 
         data: UserPayload = await self._state.http.edit_profile(payload)
         return ClientUser(state=self._state, data=data)
@@ -593,7 +627,7 @@ class User(BaseUser, discord.abc.Messageable):
                     "<User"
                     f" id={self.id} username={self.name!r} global_name={self.global_name!r} bot={self.bot}>"
                 )
-            return "<User" f" id={self.id} username={self.name!r} bot={self.bot}>"
+            return f"<User id={self.id} username={self.name!r} bot={self.bot}>"
         return (
             "<User"
             f" id={self.id} name={self.name!r} discriminator={self.discriminator!r} bot={self.bot}>"
